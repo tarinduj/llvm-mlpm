@@ -15,6 +15,8 @@ llvm_build_path = '/Users/tarindujayatilaka/Documents/LLVM/llvm-build'
 llvm_extract_path = os.path.join(llvm_build_path, 'bin', 'llvm-extract')
 llc_path = os.path.join(llvm_build_path, 'bin', 'llc')
 
+source_dir = '../O1-build/compile_commands.json'
+
 """
 takes a json object as input and returns a list of commands to create .ll files for each optimization level, and dump code features.
 
@@ -192,8 +194,21 @@ def get_training_dataset(command_output_dir_dict):
     
     return dataset
 
+def get_dataset_header(command_output_dir_dict):
+    code_features_path = command_output_dir_dict['code-features'][1]
+
+    with open(code_features_path, 'r+') as f:
+        function_code_features_list = list(map(str.strip, list(filter(None, f.read().split('####')))))
+
+    features = ''
+    for code_feature in function_code_features_list[0].split('\n')[1:]:
+        features += code_feature.split(':')[0] + ','
+    
+    header = 'function, ' + features + 'label' + '\n'
+    return header
+
 if __name__ == '__main__':  
-    with open('../O1-build/compile_commands.json', 'r+') as f:
+    with open(source_dir, 'r+') as f:
         data = json.load(f)
 
     num_workers = multiprocessing.cpu_count()
@@ -203,12 +218,14 @@ if __name__ == '__main__':
 
     with multiprocessing.Pool(num_workers) as pool:
         command_output_dir_dict_list = list(tqdm.tqdm(pool.imap(get_data_dump_commands, data), total=len(data)))
-
+ 
     with multiprocessing.Pool(num_workers) as pool:
         list(tqdm.tqdm(pool.imap(run_data_dump_commands, command_output_dir_dict_list), total=len(command_output_dir_dict_list)))
 
     with multiprocessing.Pool(num_workers) as pool:
-        with open('../dataset.csv', 'w+') as f:
+        with open(os.path.join(os.path.dirname(os.getcwd()), 'dataset.csv'), 'w+') as f:
+            header = get_dataset_header(command_output_dir_dict_list[0])
+            f.write(header)
             for sub_dataset in list(tqdm.tqdm(pool.imap(get_training_dataset, command_output_dir_dict_list), total=len(command_output_dir_dict_list))):
                 f.write(sub_dataset)
 
