@@ -43,7 +43,7 @@ def create_builds():
         
         logging.debug('mkdir -p ' + build_dir +'\n')
         subprocess.run(['mkdir', '-p', build_dir], check=True)
-        logging.debug('cd ' + build_dir +'\n')
+        logging.debug('cd' + build_dir +'\n')
         subprocess.run(['cd', build_dir], check=True)
         
         logging.debug(" ".join(cmake_command) + '\n')
