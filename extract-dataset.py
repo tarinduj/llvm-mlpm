@@ -88,13 +88,13 @@ def run_data_dump_commands(command_output_dir_dict):
     # run the code feature dump command first (needs to replace function annotations creted by data dump by running O1 again)
     command = command_output_dir_dict['code-features'][0]
     logging.debug(" ".join(command) + '\n')
-    subprocess.run(command, check=True)
+    subprocess.run(command)
 
     # create the .ll files for all optimization levels
     for opt_level in opt_levels: 
         command = command_output_dir_dict[opt_level][0]
         logging.debug(" ".join(command) + '\n')
-        subprocess.run(command, check=True) 
+        subprocess.run(command) 
 
 """
 compares the assembly files and returns the minimum optimization level for function
@@ -195,7 +195,7 @@ def get_training_dataset(command_output_dir_dict):
         # get the training label
         label = get_optimization_level_label(function, module_dir_paths)
         
-        row = function + ',' + features + ', ' + label
+        row = function + ', ' + features + ', ' + label + ', ' + code_features_path
         dataset += row + '\n'
     
     return dataset
@@ -210,7 +210,7 @@ def get_dataset_header(command_output_dir_dict):
     for code_feature in function_code_features_list[0].split('\n')[1:]:
         features += code_feature.split(':')[0] + ','
     
-    header = 'function, ' + features + 'label' + '\n'
+    header = 'function, ' + features + 'label, module_path' + '\n'
     return header
 
 if __name__ == '__main__': 
@@ -223,8 +223,8 @@ if __name__ == '__main__':
     data = np.array(data).T.tolist()
    
     # FIX ME: remove this later
-    data = data[:4]
-    get_data_dump_commands(data[0])
+    # data = data[:4]
+    # get_data_dump_commands(data[0])
 
     with multiprocessing.Pool(num_workers) as pool:
         command_output_dir_dict_list = list(tqdm.tqdm(pool.imap(get_data_dump_commands, data), total=len(data)))
