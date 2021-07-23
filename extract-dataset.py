@@ -12,10 +12,10 @@ dataset_name = 'llvm'
 create_builds_option = True
 
 # path to compiler
-llvm_build_path = '/mnt/disks/data/tarindu//llvm-build'
+llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
 
 # path to the target to compile
-target_dir = '/mnt/disks/data/tarindu/llvm-project/llvm'
+target_dir = '/mnt/disks/data/tarindu/test-builds/llvm/llvm-project/llvm'
 
 llvm_extract_path = os.path.join(llvm_build_path, 'bin', 'llvm-extract')
 llc_path = os.path.join(llvm_build_path, 'bin', 'llc')
