@@ -239,6 +239,9 @@ if __name__ == '__main__':
             for sub_dataset in list(tqdm.tqdm(pool.imap(get_training_dataset, command_output_dir_dict_list), total=len(command_output_dir_dict_list))):
                 f.write(sub_dataset)
 
+    with open("success.log") as f:
+        f.write("finished running")
+
 
 
     # with open('results.txt', 'w') as f:
