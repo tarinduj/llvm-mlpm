@@ -9,48 +9,17 @@ import numpy as np
 # provide in increasing order of level of optimization
 opt_levels = ['O1', 'O2', 'O3']
 dataset_name = 'llvm'
-create_builds_option = True
 
 # path to compiler
 llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
 
-# path to the target to compile
-target_dir = '/mnt/disks/data/tarindu/test-builds/llvm/llvm-project/llvm'
-
 llvm_extract_path = os.path.join(llvm_build_path, 'bin', 'llvm-extract')
 llc_path = os.path.join(llvm_build_path, 'bin', 'llc')
-clang_path = os.path.join(llvm_build_path, 'bin', 'clang')
-clangpp_path = os.path.join(llvm_build_path, 'bin', 'clang++')
 
 num_workers = multiprocessing.cpu_count()
 
 debug_file_path = os.path.join(os.path.dirname(os.getcwd()), 'debug.log')
 logging.basicConfig(filename=debug_file_path, filemode='w+', level=logging.DEBUG)
-
-def create_builds():
-    script_dir = str(os.getcwd())
-    
-    for opt_level in opt_levels:
-        build_dir = os.path.join(os.path.dirname(script_dir), dataset_name, f'{opt_level}-build')
-        cmake_command = [
-            'cmake', '-DLLVM_ENABLE_LIBCXX=ON',  '-DLLVM_USE_NEWPM=ON', '-DLLVM_ENABLE_PROJECTS="clang;debuginfo-tests"',
-            f'-DCMAKE_C_COMPILER={clang_path}', f'-DCMAKE_CXX_COMPILER={clangpp_path}', f'-DCMAKE_C_FLAGS_RELEASE=-{opt_level}',
-            f'-DCMAKE_CXX_FLAGS_RELEASE=-{opt_level}', '-DLLVM_TARGETS_TO_BUILD=X86', '-DCMAKE_BUILD_TYPE=Release',
-            '-DCMAKE_EXPORT_COMPILE_COMMANDS=1', '-DLLVM_ENABLE_ASSERTIONS=1', f'{target_dir}' 
-            ]
-        llvm_headers_command = ['make', 'install-llvm-headers']
-        make_command = ['make', f'-j{num_workers}']
-        
-        logging.debug('mkdir -p ' + build_dir +'\n')
-        subprocess.run(['mkdir', '-p', build_dir], check=True)
-        
-        logging.debug(" ".join(cmake_command) + '\n')
-        subprocess.run(cmake_command, check=True, cwd=build_dir) 
-        logging.debug(" ".join(llvm_headers_command) + '\n')
-        subprocess.run(llvm_headers_command, cwd=build_dir)  
-        logging.debug(" ".join(make_command) + '\n')
-        subprocess.run(make_command, cwd=build_dir) 
-
         
 """
 takes a json object as input and returns a list of commands to create .ll files for each optimization level, and dump code features.
@@ -76,7 +45,6 @@ def get_data_dump_commands(objs):
     for index, opt_level in enumerate(opt_levels):
         obj = objs[index]
         cmd = obj['command']
-        print(cmd)
         cmd_list = cmd.split()
 
         # use -o and opt-level flags as anchors to modify the command
@@ -246,9 +214,6 @@ def get_dataset_header(command_output_dir_dict):
     return header
 
 if __name__ == '__main__': 
-    if (create_builds_option): 
-        create_builds()
-
     data = []
     for opt_level in opt_levels:
         json_path = os.path.join(os.path.dirname(os.getcwd()), dataset_name, f'{opt_level}-build', 'compile_commands.json')
@@ -258,8 +223,8 @@ if __name__ == '__main__':
     data = np.array(data).T.tolist()
    
     # FIX ME: remove this later
-    # data = data[:4]
-    # get_data_dump_commands(data[0])
+    data = data[:4]
+    get_data_dump_commands(data[0])
 
     with multiprocessing.Pool(num_workers) as pool:
         command_output_dir_dict_list = list(tqdm.tqdm(pool.imap(get_data_dump_commands, data), total=len(data)))
