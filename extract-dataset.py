@@ -49,7 +49,7 @@ def create_builds():
         logging.debug(" ".join(llvm_headers_command) + '\n')
         subprocess.run(llvm_headers_command, cwd=build_dir)  
         logging.debug(" ".join(make_command) + '\n')
-        subprocess.run(make_command, check=True, cwd=build_dir) 
+        subprocess.run(make_command, cwd=build_dir) 
 
         
 """
