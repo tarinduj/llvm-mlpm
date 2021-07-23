@@ -4,19 +4,59 @@ import subprocess
 import os
 import tqdm
 import logging
+import numpy as np
+
+# provide in increasing order of level of optimization
+opt_levels = ['O1', 'O2', 'O3']
+dataset_name = 'llvm'
+create_builds_option = True
+
+# path to compiler
+llvm_build_path = '/mnt/disks/data/tarindu//llvm-build'
+
+# path to the target to compile
+target_dir = '/mnt/disks/data/tarindu/llvm-project/llvm'
+
+llvm_extract_path = os.path.join(llvm_build_path, 'bin', 'llvm-extract')
+llc_path = os.path.join(llvm_build_path, 'bin', 'llc')
+clang_path = os.path.join(llvm_build_path, 'bin', 'clang')
+clangpp_path = os.path.join(llvm_build_path, 'bin', 'clang++')
+
+num_workers = multiprocessing.cpu_count()
 
 debug_file_path = os.path.join(os.path.dirname(os.getcwd()), 'debug.log')
 logging.basicConfig(filename=debug_file_path, filemode='w+', level=logging.DEBUG)
 
-# provide in increasing order of level of optimization
-opt_levels = ['O1', 'O2', 'O3']
+def create_builds():
+    script_dir = str(os.getcwd())
+    
+    for opt_level in opt_levels:
+        build_dir = os.path.join(os.path.dirname(script_dir), dataset_name, f'{opt_level}-build')
+        cmake_command = [
+            'cmake', '-DLLVM_ENABLE_LIBCXX=ON',  '-DLLVM_USE_NEWPM=ON', '-DLLVM_ENABLE_PROJECTS="clang;debuginfo-tests"',
+            f'-DCMAKE_C_COMPILER={clang_path}', f'-DCMAKE_CXX_COMPILER={clangpp_path}', f'-DCMAKE_C_FLAGS_RELEASE="-{opt_level}"',
+            f'-DCMAKE_CXX_FLAGS_RELEASE="-{opt_level}"', '-DLLVM_TARGETS_TO_BUILD=X86', '-DCMAKE_BUILD_TYPE=Release',
+            '-DCMAKE_EXPORT_COMPILE_COMMANDS=1', '-DLLVM_ENABLE_ASSERTIONS=1', f'{target_dir}' 
+            ]
+        llvm_headers_command = ['make', 'install-llvm-headers']
+        make_command = ['make', f'-j{num_workers}']
+        
+        logging.debug('mkdir -p ' + build_dir +'\n')
+        subprocess.run(['mkdir', '-p', build_dir], check=True)
+        logging.debug('cd ' + build_dir +'\n')
+        subprocess.run(['cd', build_dir], check=True)
+        
+        logging.debug(" ".join(cmake_command) + '\n')
+        subprocess.run(cmake_command, check=True) 
+        logging.debug(" ".join(llvm_headers_command) + '\n')
+        subprocess.run(llvm_headers_command, check=True) 
+        logging.debug(" ".join(make_command) + '\n')
+        subprocess.run(make_command, check=True) 
 
-llvm_build_path = '/Users/tarindujayatilaka/Documents/LLVM/llvm-build'
-llvm_extract_path = os.path.join(llvm_build_path, 'bin', 'llvm-extract')
-llc_path = os.path.join(llvm_build_path, 'bin', 'llc')
+    logging.debug('cd ' + script_dir +'\n')
+    subprocess.run(['cd', script_dir], check=True)
 
-source_dir = '../O1-build/compile_commands.json'
-
+        
 """
 takes a json object as input and returns a list of commands to create .ll files for each optimization level, and dump code features.
 
@@ -34,31 +74,33 @@ Output: {
         }
 
 """
-def get_data_dump_commands(obj):
-    cmd = obj['command']
-    cmd_list = cmd.split()
-    
-    # use -o and -O1 flags as anchors to modify the command
-    output_anchor = cmd_list.index('-o')
-    opt_anchor = cmd_list.index('-O1')
-    
-    cmd_list.insert(output_anchor, '-emit-llvm')
-    
-    prev_output_path = cmd_list[output_anchor+2]
-
+def get_data_dump_commands(objs):
     commands = {}
+
     # change output path and optimization level
-    for opt_level in opt_levels:
+    for index, opt_level in enumerate(opt_levels):
+        obj = objs[index]
+        cmd = obj['command']
+        cmd_list = cmd.split()
+
+        # use -o and opt-level flags as anchors to modify the command
+        output_anchor = cmd_list.index('-o')
+        opt_anchor = cmd_list.index(f'-{opt_level}')
+
+        cmd_list.insert(output_anchor, '-emit-llvm')
+        prev_output_path = cmd_list[output_anchor+2]
+
         cmd_list_opt_level = cmd_list.copy()
-        output_path = os.path.join(os.path.dirname(os.getcwd()), f'{opt_level}-ll{os.path.sep}', prev_output_path[:-1] + 'll')
+        output_path = os.path.join(os.path.dirname(os.getcwd()), dataset_name, f'{opt_level}-ll{os.path.sep}', prev_output_path[:-1] + 'll')
         cmd_list_opt_level[output_anchor+2] = output_path
         cmd_list_opt_level[opt_anchor] = '-' + opt_level
         output_dir = output_path[:output_path.rfind(os.path.sep)]
         commands[opt_level] = [cmd_list_opt_level, output_dir]
     
     #command to dump code features
-    code_feature_dump_path = os.path.abspath(os.path.join(os.path.dirname(os.getcwd()), f'code-features{os.path.sep}', prev_output_path[:-1] + 'txt'))
+    code_feature_dump_path = os.path.abspath(os.path.join(os.path.dirname(os.getcwd()), dataset_name, f'code-features{os.path.sep}', prev_output_path[:-1] + 'txt'))
     code_feature_dump_command = commands[opt_levels[0]][0].copy()
+    opt_anchor = code_feature_dump_command.index(f'-{opt_levels[0]}')
     code_feature_dump_command.insert(opt_anchor, f'-mlpm-feature-dump-path={code_feature_dump_path}')
     code_feature_dump_command.insert(opt_anchor, '-mllvm')
     code_feature_dump_command.insert(opt_anchor, '-dump-mlpm-data')
@@ -207,14 +249,21 @@ def get_dataset_header(command_output_dir_dict):
     header = 'function, ' + features + 'label' + '\n'
     return header
 
-if __name__ == '__main__':  
-    with open(source_dir, 'r+') as f:
-        data = json.load(f)
+if __name__ == '__main__': 
+    if (create_builds_option): 
+        create_builds()
 
-    num_workers = multiprocessing.cpu_count()
+    data = []
+    for opt_level in opt_levels:
+        json_path = os.path.join(os.path.dirname(os.getcwd()), dataset_name, f'{opt_level}-build', 'compile_commands.json')
+        with open(json_path)as f:
+            data.append(json.load(f))
 
+    data = np.array(data).T.tolist()
+   
     # FIX ME: remove this later
-    data = data[:4]
+    # data = data[:4]
+    # get_data_dump_commands(data[0])
 
     with multiprocessing.Pool(num_workers) as pool:
         command_output_dir_dict_list = list(tqdm.tqdm(pool.imap(get_data_dump_commands, data), total=len(data)))
@@ -223,7 +272,7 @@ if __name__ == '__main__':
         list(tqdm.tqdm(pool.imap(run_data_dump_commands, command_output_dir_dict_list), total=len(command_output_dir_dict_list)))
 
     with multiprocessing.Pool(num_workers) as pool:
-        with open(os.path.join(os.path.dirname(os.getcwd()), 'dataset.csv'), 'w+') as f:
+        with open(os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'dataset.csv'), 'w+') as f:
             header = get_dataset_header(command_output_dir_dict_list[0])
             f.write(header)
             for sub_dataset in list(tqdm.tqdm(pool.imap(get_training_dataset, command_output_dir_dict_list), total=len(command_output_dir_dict_list))):
