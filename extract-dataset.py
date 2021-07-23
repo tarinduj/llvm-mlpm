@@ -34,8 +34,8 @@ def create_builds():
         build_dir = os.path.join(os.path.dirname(script_dir), dataset_name, f'{opt_level}-build')
         cmake_command = [
             'cmake', '-DLLVM_ENABLE_LIBCXX=ON',  '-DLLVM_USE_NEWPM=ON', '-DLLVM_ENABLE_PROJECTS="clang;debuginfo-tests"',
-            f'-DCMAKE_C_COMPILER={clang_path}', f'-DCMAKE_CXX_COMPILER={clangpp_path}', f'-DCMAKE_C_FLAGS_RELEASE="-{opt_level}"',
-            f'-DCMAKE_CXX_FLAGS_RELEASE="-{opt_level}"', '-DLLVM_TARGETS_TO_BUILD=X86', '-DCMAKE_BUILD_TYPE=Release',
+            f'-DCMAKE_C_COMPILER={clang_path}', f'-DCMAKE_CXX_COMPILER={clangpp_path}', f'-DCMAKE_C_FLAGS_RELEASE=-{opt_level}',
+            f'-DCMAKE_CXX_FLAGS_RELEASE=-{opt_level}', '-DLLVM_TARGETS_TO_BUILD=X86', '-DCMAKE_BUILD_TYPE=Release',
             '-DCMAKE_EXPORT_COMPILE_COMMANDS=1', '-DLLVM_ENABLE_ASSERTIONS=1', f'{target_dir}' 
             ]
         llvm_headers_command = ['make', 'install-llvm-headers']
@@ -76,6 +76,7 @@ def get_data_dump_commands(objs):
     for index, opt_level in enumerate(opt_levels):
         obj = objs[index]
         cmd = obj['command']
+        print(cmd)
         cmd_list = cmd.split()
 
         # use -o and opt-level flags as anchors to modify the command
