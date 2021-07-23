@@ -43,18 +43,13 @@ def create_builds():
         
         logging.debug('mkdir -p ' + build_dir +'\n')
         subprocess.run(['mkdir', '-p', build_dir], check=True)
-        logging.debug('cd' + build_dir +'\n')
-        subprocess.run(['cd', build_dir], check=True)
         
         logging.debug(" ".join(cmake_command) + '\n')
-        subprocess.run(cmake_command, check=True) 
+        subprocess.run(cmake_command, check=True, cwd=build_dir) 
         logging.debug(" ".join(llvm_headers_command) + '\n')
-        subprocess.run(llvm_headers_command, check=True) 
+        subprocess.run(llvm_headers_command, check=True, cwd=build_dir)  
         logging.debug(" ".join(make_command) + '\n')
-        subprocess.run(make_command, check=True) 
-
-    logging.debug('cd ' + script_dir +'\n')
-    subprocess.run(['cd', script_dir], check=True)
+        subprocess.run(make_command, check=True, cwd=build_dir) 
 
         
 """
