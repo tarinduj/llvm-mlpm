@@ -12,15 +12,33 @@ dataset_name = 'llvm'
 
 # path to compiler
 llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
+# llvm_build_path = '/Users/tarindujayatilaka/Documents/LLVM/llvm-build'
 
 llvm_extract_path = os.path.join(llvm_build_path, 'bin', 'llvm-extract')
 llc_path = os.path.join(llvm_build_path, 'bin', 'llc')
 
 num_workers = multiprocessing.cpu_count()
 
-debug_file_path = os.path.join(os.path.dirname(os.getcwd()), 'debug.log')
-logging.basicConfig(filename=debug_file_path, filemode='w+', level=logging.DEBUG)
-        
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+
+def setup_logger(name, log_file, level=logging.DEBUG):
+    """To setup as many loggers as you want"""
+    handler = logging.FileHandler(log_file, 'w+')     
+    handler.setFormatter(formatter)
+    handler.setLevel(level)
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+    return logger
+
+debug_log_path = os.path.join(os.path.dirname(os.getcwd()), f'{dataset_name}-debug.log')   
+debug_logger = setup_logger('debug_logger', debug_log_path)
+
+error_log_path = os.path.join(os.path.dirname(os.getcwd()), f'{dataset_name}-error.log')   
+error_logger = setup_logger('error_logger', error_log_path)
+
 """
 takes a json object as input and returns a list of commands to create .ll files for each optimization level, and dump code features.
 
@@ -77,24 +95,29 @@ def run_data_dump_commands(command_output_dir_dict):
     #crete directories
     output_path = command_output_dir_dict['code-features'][1]
     output_dir = output_path[:output_path.rfind(os.path.sep)]
-    logging.debug(output_path + '\n')
+    debug_logger.debug(output_path + '\n')
     subprocess.run(['mkdir', '-p', output_dir], check=True)
 
     for opt_level in opt_levels: 
         output_dir = command_output_dir_dict[opt_level][1]
-        logging.debug('mkdir -p ' + output_dir +'\n')
+        debug_logger.debug('mkdir -p ' + output_dir +'\n')
         subprocess.run(['mkdir', '-p', output_dir], check=True)
 
     # run the code feature dump command first (needs to replace function annotations creted by data dump by running O1 again)
-    command = command_output_dir_dict['code-features'][0]
-    logging.debug(" ".join(command) + '\n')
-    subprocess.run(command)
+    try:
+        command = command_output_dir_dict['code-features'][0]
+        debug_logger.debug(" ".join(command) + '\n')
+        subprocess.run(command, check=True)
 
-    # create the .ll files for all optimization levels
-    for opt_level in opt_levels: 
-        command = command_output_dir_dict[opt_level][0]
-        logging.debug(" ".join(command) + '\n')
-        subprocess.run(command) 
+        # create the .ll files for all optimization levels
+        for opt_level in opt_levels: 
+            command = command_output_dir_dict[opt_level][0]
+            debug_logger.debug(" ".join(command) + '\n')
+            subprocess.run(command, check=True) 
+    
+    except subprocess.CalledProcessError as e:
+        error_logger.warning(e)
+
 
 """
 compares the assembly files and returns the minimum optimization level for function
@@ -116,12 +139,12 @@ def get_optimization_level_label(function, module_dir_paths):
         as_output_path = os.path.join(module_dir_path[1], function + '.s')
         
         command = [llvm_extract_path, '-S', '-func', function, module_path, '-o', ir_output_path]
-        logging.debug(" ".join(command) + '\n')
+        debug_logger.debug(" ".join(command) + '\n')
         try:
             subprocess.run(command, check=True, stderr=subprocess.DEVNULL)
 
             command = [llc_path, ir_output_path, '-o', as_output_path]
-            logging.debug(" ".join(command) + '\n')
+            debug_logger.debug(" ".join(command) + '\n')
             subprocess.run(command, check=True)
 
             with open(as_output_path, 'r+') as f:
@@ -129,7 +152,7 @@ def get_optimization_level_label(function, module_dir_paths):
         
         # flag asm file as -1 if function not found
         except subprocess.CalledProcessError as e:
-            logging.debug(e)
+            error_logger.warning(e)
             asm_files.append(-1)
 
 
@@ -170,34 +193,35 @@ def get_training_dataset(command_output_dir_dict):
         parent_dir = command_output_dir_dict[opt_level][1]
         module_path = os.path.join(parent_dir, module_name + '.ll')
         module_sub_dir = os.path.join(parent_dir, module_name + '.ll.dir')
-        logging.debug('mkdir -p ' + module_sub_dir +'\n')
+        debug_logger.debug('mkdir -p ' + module_sub_dir +'\n')
         subprocess.run(['mkdir', '-p', module_sub_dir], check=True)
         module_dir_paths[opt_level] = [module_path, module_sub_dir]
 
-    with open(code_features_path, 'r+') as f:
-        function_code_features_list = list(map(str.strip, list(filter(None, f.read().split('####')))))
-
     dataset = ''
+    try: 
+        with open(code_features_path, 'r+') as f:
+            function_code_features_list = list(map(str.strip, list(filter(None, f.read().split('####')))))
 
-    # creates a row in the format: function, [code features], optimization level
-    for function_code_features in function_code_features_list:
-        function_code_features = function_code_features.split('\n')
-        
-        # index
-        function = function_code_features[0]
-        
-        # code features list
-        features = ''
-        for code_feature in function_code_features[1:]:
-            features += code_feature.split(':')[-1] + ','
-        features = features[:-1]
+        # creates a row in the format: function, [code features], optimization level
+        for function_code_features in function_code_features_list:
+            function_code_features = function_code_features.split('\n')
+            
+            # index
+            function = function_code_features[0]
+            
+            # code features list
+            features = ''
+            for code_feature in function_code_features[1:]:
+                features += code_feature.split(':')[-1] + ','
+            features = features[:-1]
 
-        # get the training label
-        label = get_optimization_level_label(function, module_dir_paths)
-        
-        row = function + ', ' + features + ', ' + label + ', ' + code_features_path
-        dataset += row + '\n'
-    
+            # get the training label
+            label = get_optimization_level_label(function, module_dir_paths)
+            
+            row = function + ', ' + features + ', ' + label + ', ' + code_features_path
+            dataset += row + '\n'
+    except FileNotFoundError as e:
+        error_logger.warning(e)
     return dataset
 
 def get_dataset_header(command_output_dir_dict):
@@ -232,15 +256,12 @@ if __name__ == '__main__':
     with multiprocessing.Pool(num_workers) as pool:
         list(tqdm.tqdm(pool.imap(run_data_dump_commands, command_output_dir_dict_list), total=len(command_output_dir_dict_list)))
 
-    with multiprocessing.Pool(num_workers) as pool:
-        with open(os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'dataset.csv'), 'w+') as f:
-            header = get_dataset_header(command_output_dir_dict_list[0])
-            f.write(header)
+    with open(os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'dataset.csv'), 'w+') as f:
+        header = get_dataset_header(command_output_dir_dict_list[0])
+        f.write(header)
+        with multiprocessing.Pool(num_workers) as pool:
             for sub_dataset in list(tqdm.tqdm(pool.imap(get_training_dataset, command_output_dir_dict_list), total=len(command_output_dir_dict_list))):
                 f.write(sub_dataset)
-
-    with open("success.log") as f:
-        f.write("finished running")
 
 
 
