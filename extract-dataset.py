@@ -247,7 +247,7 @@ if __name__ == '__main__':
     data = np.array(data).T.tolist()
    
     # FIX ME: remove this later
-    data = data[:4]
+    # data = data[:4]
     # get_data_dump_commands(data[0])
 
     with multiprocessing.Pool(num_workers) as pool:
