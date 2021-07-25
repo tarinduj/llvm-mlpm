@@ -11,8 +11,8 @@ opt_levels = ['O1', 'O2', 'O3']
 dataset_name = 'llvm'
 
 # path to compiler
-#llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
-llvm_build_path = '/Users/tarindujayatilaka/Documents/LLVM/llvm-build'
+llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
+# llvm_build_path = '/Users/tarindujayatilaka/Documents/LLVM/llvm-build'
 
 llvm_extract_path = os.path.join(llvm_build_path, 'bin', 'llvm-extract')
 llc_path = os.path.join(llvm_build_path, 'bin', 'llc')
@@ -256,6 +256,7 @@ if __name__ == '__main__':
     with multiprocessing.Pool(num_workers) as pool:
         list(tqdm.tqdm(pool.imap(run_data_dump_commands, command_output_dir_dict_list), total=len(command_output_dir_dict_list)))
 
+    print("Creating CSV.\n")
     with multiprocessing.Pool(num_workers) as pool:
         with open(os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'dataset.csv'), 'w+') as f:
             header = get_dataset_header(command_output_dir_dict_list[0])
