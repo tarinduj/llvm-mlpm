@@ -9,11 +9,11 @@ import numpy as np
 # provide in increasing order of level of optimization
 opt_levels = ['O1', 'O2', 'O3']
 dataset_name = 'llvm'
-num_sub_datasets = 20
+num_sub_datasets = 3
 
 # path to compiler
-llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
-#llvm_build_path = '/Users/tarindujayatilaka/Documents/LLVM/llvm-build'
+#llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
+llvm_build_path = '/Users/tarindujayatilaka/Documents/LLVM/llvm-build'
 
 llvm_extract_path = os.path.join(llvm_build_path, 'bin', 'llvm-extract')
 llc_path = os.path.join(llvm_build_path, 'bin', 'llc')
@@ -248,14 +248,14 @@ if __name__ == '__main__':
     data = np.array(data).T.tolist()
    
     # FIX ME: remove this later
-    # data = data[:4]
+    data = data[:4]
     # get_data_dump_commands(data[0])
 
     with multiprocessing.Pool(num_workers) as pool:
         command_output_dir_dict_list = list(tqdm.tqdm(pool.imap(get_data_dump_commands, data), total=len(data)))
  
-    with multiprocessing.Pool(num_workers) as pool:
-        list(tqdm.tqdm(pool.imap(run_data_dump_commands, command_output_dir_dict_list), total=len(command_output_dir_dict_list)))
+    # with multiprocessing.Pool(num_workers) as pool:
+    #     list(tqdm.tqdm(pool.imap(run_data_dump_commands, command_output_dir_dict_list), total=len(command_output_dir_dict_list)))
 
     print("\nCreating CSVs.\n")
     header = get_dataset_header(command_output_dir_dict_list[0])
@@ -271,9 +271,10 @@ if __name__ == '__main__':
     with multiprocessing.Pool(num_workers) as pool:
         for i in range(num_sub_datasets):
             sub_command_output_dir_dict_list = command_output_dir_dict_list[i*sub_dataset_size: min((i+1)*sub_dataset_size, num_modules)]
+            print(f"\nCreating CSV {i}.\n")
             with open(os.path.join(os.path.dirname(os.getcwd()), dataset_name, f'dataset-{i}.csv'), 'w+') as f:
                 f.write(header)
-                for sub_dataset in list(tqdm.tqdm(pool.imap(get_training_dataset, command_output_dir_dict_list), total=len(command_output_dir_dict_list))):
+                for sub_dataset in list(tqdm.tqdm(pool.imap(get_training_dataset, sub_command_output_dir_dict_list), total=len(sub_command_output_dir_dict_list))):
                     f.write(sub_dataset)
 
 
