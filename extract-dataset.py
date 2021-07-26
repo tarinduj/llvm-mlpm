@@ -9,11 +9,11 @@ import numpy as np
 # provide in increasing order of level of optimization
 opt_levels = ['O1', 'O2', 'O3']
 dataset_name = 'llvm'
-num_sub_datasets = 3
+num_sub_datasets = 10
 
 # path to compiler
-#llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
-llvm_build_path = '/Users/tarindujayatilaka/Documents/LLVM/llvm-build'
+llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
+# llvm_build_path = '/Users/tarindujayatilaka/Documents/LLVM/llvm-build'
 
 llvm_extract_path = os.path.join(llvm_build_path, 'bin', 'llvm-extract')
 llc_path = os.path.join(llvm_build_path, 'bin', 'llc')
@@ -248,7 +248,7 @@ if __name__ == '__main__':
     data = np.array(data).T.tolist()
    
     # FIX ME: remove this later
-    data = data[:4]
+    # data = data[:4]
     # get_data_dump_commands(data[0])
 
     with multiprocessing.Pool(num_workers) as pool:
