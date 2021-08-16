@@ -10,6 +10,10 @@ import numpy as np
 opt_levels = ['O1', 'O2', 'O3']
 dataset_name = 'llvm'
 num_sub_datasets = 10
+get_labels = False # set True to compare functions and get the dataset labels 
+
+#global variable for dataset creation
+dataset_opt_level = opt_levels[0]
 
 # path to compiler
 llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
@@ -43,17 +47,23 @@ error_logger = setup_logger('error_logger', error_log_path)
 """
 takes a json object as input and returns a list of commands to create .ll files for each optimization level, and dump code features.
 
-Input:  {
-            "directory": ..,
-            "command": ..,
-            "file": ..
-        }
+input is the compile commands for O1, O2, and O3
+Input:  [
+            {   "directory": .., 
+                "command": ..,
+                "file": ..         },
+            {   "directory": ..,
+                "command": ..,
+                "file": ..         },
+            {   "directory": ..,
+                "command": ..,
+                "file": ..         }
+        ]
 
 Output: {
-            'O1':               [command, output_dir],
-            'O2':               [command, output_dir],
-            'O3':               [command, output_dir],
-            'code-features':    [command, output_path]
+            'O1':               [command, output_dir, code_feature_dump_path],
+            'O2':               [command, output_dir, code_feature_dump_path],
+            'O3':               [command, output_dir, code_feature_dump_path]
         }
 
 """
@@ -74,43 +84,38 @@ def get_data_dump_commands(objs):
         prev_output_path = cmd_list[output_anchor+2]
 
         cmd_list_opt_level = cmd_list.copy()
-        output_path = os.path.join(os.path.dirname(os.getcwd()), dataset_name, f'{opt_level}-ll{os.path.sep}', prev_output_path[:-1] + 'll')
+        output_path = os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'ir', f'{opt_level}', prev_output_path[:-1] + 'll')
         cmd_list_opt_level[output_anchor+2] = output_path
-        cmd_list_opt_level[opt_anchor] = '-' + opt_level
+        
+        code_feature_dump_path = os.path.abspath(os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'code-features', f'{opt_level}', prev_output_path[:-1] + 'txt'))
+        # cmd_list_opt_level[opt_anchor] = '-' + opt_level
+        cmd_list_opt_level.insert(opt_anchor, f'-mlpm-feature-dump-path={code_feature_dump_path}')
+        cmd_list_opt_level.insert(opt_anchor, '-mllvm')
+        cmd_list_opt_level.insert(opt_anchor, '-dump-mlpm-data')
+        cmd_list_opt_level.insert(opt_anchor, '-mllvm')
+        
         output_dir = output_path[:output_path.rfind(os.path.sep)]
-        commands[opt_level] = [cmd_list_opt_level, output_dir]
-    
-    #command to dump code features
-    code_feature_dump_path = os.path.abspath(os.path.join(os.path.dirname(os.getcwd()), dataset_name, f'code-features{os.path.sep}', prev_output_path[:-1] + 'txt'))
-    code_feature_dump_command = commands[opt_levels[0]][0].copy()
-    opt_anchor = code_feature_dump_command.index(f'-{opt_levels[0]}')
-    code_feature_dump_command.insert(opt_anchor, f'-mlpm-feature-dump-path={code_feature_dump_path}')
-    code_feature_dump_command.insert(opt_anchor, '-mllvm')
-    code_feature_dump_command.insert(opt_anchor, '-dump-mlpm-data')
-    code_feature_dump_command.insert(opt_anchor, '-mllvm')
-    commands['code-features'] = [code_feature_dump_command, code_feature_dump_path]
+        
+        commands[opt_level] = [cmd_list_opt_level, output_dir, code_feature_dump_path]
 
     return commands
 
 def run_data_dump_commands(command_output_dir_dict):
-    #crete directories
-    output_path = command_output_dir_dict['code-features'][1]
-    output_dir = output_path[:output_path.rfind(os.path.sep)]
-    debug_logger.debug(output_path + '\n')
-    subprocess.run(['mkdir', '-p', output_dir], check=True)
-
+    # crete directories
     for opt_level in opt_levels: 
         output_dir = command_output_dir_dict[opt_level][1]
+
         debug_logger.debug('mkdir -p ' + output_dir +'\n')
         subprocess.run(['mkdir', '-p', output_dir], check=True)
+        
+        code_feature_path = command_output_dir_dict[opt_level][2]
+        code_feature_dir = code_feature_path[:code_feature_path.rfind(os.path.sep)]
+        
+        debug_logger.debug(code_feature_path + '\n')
+        subprocess.run(['mkdir', '-p', code_feature_dir], check=True)
 
-    # run the code feature dump command first (needs to replace function annotations creted by data dump by running O1 again)
+    # create the .ll files for all optimization levels and dump code features
     try:
-        command = command_output_dir_dict['code-features'][0]
-        debug_logger.debug(" ".join(command) + '\n')
-        subprocess.run(command, check=True)
-
-        # create the .ll files for all optimization levels
         for opt_level in opt_levels: 
             command = command_output_dir_dict[opt_level][0]
             debug_logger.debug(" ".join(command) + '\n')
@@ -183,50 +188,78 @@ def get_optimization_level_label(function, module_dir_paths):
 
     return opt_level_label
 
-# takes a module and returns a csv file containing training features and labels
+# takes a module and returns a csv containing training features and labels
+"""
+command_output_dir_dict =   {
+                                'O1':   [command, output_dir, code_feature_dump_path],
+                                'O2':   [command, output_dir, code_feature_dump_path],
+                                'O3':   [command, output_dir, code_feature_dump_path]
+                            }
+"""
 def get_training_dataset(command_output_dir_dict):
-    code_features_path = command_output_dir_dict['code-features'][1]
+    code_features_path = command_output_dir_dict[dataset_opt_level][2]
     module_name = code_features_path[code_features_path.rfind('/') + 1 : code_features_path.rfind('.')]
-
-    # create sub directories for the module
-    module_dir_paths = {}
-    for opt_level in opt_levels: 
-        parent_dir = command_output_dir_dict[opt_level][1]
-        module_path = os.path.join(parent_dir, module_name + '.ll')
-        module_sub_dir = os.path.join(parent_dir, module_name + '.ll.dir')
-        debug_logger.debug('mkdir -p ' + module_sub_dir +'\n')
-        subprocess.run(['mkdir', '-p', module_sub_dir], check=True)
-        module_dir_paths[opt_level] = [module_path, module_sub_dir]
 
     dataset = ''
     try: 
         with open(code_features_path, 'r+') as f:
             function_code_features_list = list(map(str.strip, list(filter(None, f.read().split('####')))))
 
-        # creates a row in the format: function, [code features], optimization level
-        for function_code_features in function_code_features_list:
-            function_code_features = function_code_features.split('\n')
-            
-            # index
-            function = function_code_features[0]
-            
-            # code features list
-            features = ''
-            for code_feature in function_code_features[1:]:
-                features += code_feature.split(':')[-1] + ','
-            features = features[:-1]
+        # only get labels for the first opt level to prevent redundancy
+        if (get_labels and dataset_opt_level==opt_levels[0]):
+            # create sub directories for the module to extract functions
+            module_dir_paths = {}
+            for opt_level in opt_levels: 
+                parent_dir = command_output_dir_dict[opt_level][1]
+                module_path = os.path.join(parent_dir, module_name + '.ll')
+                module_sub_dir = os.path.join(parent_dir, module_name + '.ll.dir')
+                debug_logger.debug('mkdir -p ' + module_sub_dir +'\n')
+                subprocess.run(['mkdir', '-p', module_sub_dir], check=True)
+                module_dir_paths[opt_level] = [module_path, module_sub_dir]
+                
+            # creates a row in the format: module path, function, [code features], optimization level label
+            for function_code_features in function_code_features_list:
+                function_code_features = function_code_features.split('\n')
+                
+                # index
+                function = function_code_features[0]
+                
+                # code features list
+                features = ''
+                for code_feature in function_code_features[1:]:
+                    features += code_feature.split(':')[-1] + ','
+                features = features[:-1]
 
-            # get the training label
-            label = get_optimization_level_label(function, module_dir_paths)
-            
-            row = function + ', ' + features + ', ' + label + ', ' + code_features_path
-            dataset += row + '\n'
+                # get the training label
+                label = get_optimization_level_label(function, module_dir_paths)
+                
+                row = code_features_path + ', ' + function + ', ' + features + ', ' + label
+                dataset += row + '\n'
+        
+        else:
+            # creates a row in the format: module path, function, [code features]
+            for function_code_features in function_code_features_list:
+                function_code_features = function_code_features.split('\n')
+                
+                # index
+                function = function_code_features[0]
+                
+                # code features list
+                features = ''
+                for code_feature in function_code_features[1:]:
+                    features += code_feature.split(':')[-1] + ','
+                features = features[:-1]
+                
+                row = code_features_path + ', ' + function + ', ' + features
+                dataset += row + '\n'
+
     except FileNotFoundError as e:
         error_logger.warning(e)
+    
     return dataset
 
 def get_dataset_header(command_output_dir_dict):
-    code_features_path = command_output_dir_dict['code-features'][1]
+    code_features_path = command_output_dir_dict[dataset_opt_level][2]
 
     with open(code_features_path, 'r+') as f:
         function_code_features_list = list(map(str.strip, list(filter(None, f.read().split('####')))))
@@ -235,7 +268,7 @@ def get_dataset_header(command_output_dir_dict):
     for code_feature in function_code_features_list[0].split('\n')[1:]:
         features += code_feature.split(':')[0] + ','
     
-    header = 'function, ' + features + 'label, module_path' + '\n'
+    header = 'module_path, function, ' + features + 'label' + '\n'
     return header
 
 if __name__ == '__main__': 
@@ -248,53 +281,46 @@ if __name__ == '__main__':
     data = np.array(data).T.tolist()
    
     # FIX ME: remove this later
-    # data = data[:4]
+    # data = data[:1]
     # get_data_dump_commands(data[0])
 
     with multiprocessing.Pool(num_workers) as pool:
         command_output_dir_dict_list = list(tqdm.tqdm(pool.imap(get_data_dump_commands, data), total=len(data)))
  
-    # with multiprocessing.Pool(num_workers) as pool:
-    #     list(tqdm.tqdm(pool.imap(run_data_dump_commands, command_output_dir_dict_list), total=len(command_output_dir_dict_list)))
+    with multiprocessing.Pool(num_workers) as pool:
+        list(tqdm.tqdm(pool.imap(run_data_dump_commands, command_output_dir_dict_list), total=len(command_output_dir_dict_list))) 
 
     print("\nCreating CSVs.\n")
+
     header = get_dataset_header(command_output_dir_dict_list[0])
+
+    # load balancing
     num_modules = len(command_output_dir_dict_list)
-    sub_dataset_size = int(num_modules / num_sub_datasets)
-    if (num_modules / sub_dataset_size):
-        num_sub_datasets = num_sub_datasets + 1
+    if (num_modules > num_sub_datasets):
+        sub_dataset_size = int(num_modules / num_sub_datasets)
+        if (num_modules % sub_dataset_size):
+            num_sub_datasets = num_sub_datasets + 1
+    else:
+        sub_dataset_size = num_modules
+        num_sub_datasets = 1
     
     print(f'Number of Modules: {num_modules}')
     print(f'Number of CSV Files: {num_sub_datasets}')
     print(f'Modules per CSV File: {sub_dataset_size}')
 
     with multiprocessing.Pool(num_workers) as pool:
-        for i in range(num_sub_datasets):
-            sub_command_output_dir_dict_list = command_output_dir_dict_list[i*sub_dataset_size: min((i+1)*sub_dataset_size, num_modules)]
-            print(f"\nCreating CSV {i}.\n")
-            with open(os.path.join(os.path.dirname(os.getcwd()), dataset_name, f'dataset-{i}.csv'), 'w+') as f:
-                f.write(header)
-                for sub_dataset in list(tqdm.tqdm(pool.imap(get_training_dataset, sub_command_output_dir_dict_list), total=len(sub_command_output_dir_dict_list))):
-                    f.write(sub_dataset)
+        for opt_level in opt_levels:
+            dataset_opt_level = opt_level
+            for i in range(num_sub_datasets):
+                sub_command_output_dir_dict_list = command_output_dir_dict_list[i*sub_dataset_size: min((i+1)*sub_dataset_size, num_modules)]
+                
+                print(f"\nCreating CSV {i}.\n")
+                dataset_dir = os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'datasets', opt_level)
+                subprocess.run(['mkdir', '-p', dataset_dir], check=True)
+                
+                with open(os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'datasets', opt_level, f'dataset-{i}.csv'), 'w+') as f:
+                    f.write(header)
+                    for sub_dataset in list(tqdm.tqdm(pool.imap(get_training_dataset, sub_command_output_dir_dict_list), total=len(sub_command_output_dir_dict_list))):
+                        f.write(sub_dataset)
 
 
-
-    # with open('results.txt', 'w') as f:
-    #     for result in p.imap(mp_worker, filenames):
-    #         # (filename, count) tuples from worker
-    #         f.write('%s: %d\n' % result)
-
-    # print(subprocess.run(['ls']))
-    # subprocess.run(cmd_list, check=True)
-    # command = " ".join(cmd_list)
-    # print(command)
-
-    # with open('../O1-build/compile_commands.json', 'w+') as f:
-    #     json.dump(modified_data, f, indent=4)
-        
-
-# import csv   
-# fields=['first','second','third']
-# with open(r'name', 'a') as f:
-#     writer = csv.writer(f)
-#     writer.writerow(fields)
