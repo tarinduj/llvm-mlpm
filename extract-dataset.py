@@ -5,15 +5,13 @@ import os
 import tqdm
 import logging
 import numpy as np
+from functools import partial
 
 # provide in increasing order of level of optimization
 opt_levels = ['O1', 'O2', 'O3']
 dataset_name = 'llvm'
 num_sub_datasets = 10
 get_labels = False # set True to compare functions and get the dataset labels 
-
-#global variable for dataset creation
-dataset_opt_level = opt_levels[0]
 
 # path to compiler
 llvm_build_path = '/mnt/disks/data/tarindu/llvm-build'
@@ -196,8 +194,10 @@ command_output_dir_dict =   {
                                 'O3':   [command, output_dir, code_feature_dump_path]
                             }
 """
-def get_training_dataset(command_output_dir_dict):
+def get_training_dataset(command_output_dir_dict, dataset_opt_level):
     code_features_path = command_output_dir_dict[dataset_opt_level][2]
+    print(dataset_opt_level)
+    print(code_features_path)
     module_name = code_features_path[code_features_path.rfind('/') + 1 : code_features_path.rfind('.')]
 
     dataset = ''
@@ -259,7 +259,7 @@ def get_training_dataset(command_output_dir_dict):
     return dataset
 
 def get_dataset_header(command_output_dir_dict):
-    code_features_path = command_output_dir_dict[dataset_opt_level][2]
+    code_features_path = command_output_dir_dict[opt_levels[0]][2]
 
     with open(code_features_path, 'r+') as f:
         function_code_features_list = list(map(str.strip, list(filter(None, f.read().split('####')))))
@@ -310,7 +310,6 @@ if __name__ == '__main__':
 
     with multiprocessing.Pool(num_workers) as pool:
         for opt_level in opt_levels:
-            dataset_opt_level = opt_level
             for i in range(num_sub_datasets):
                 sub_command_output_dir_dict_list = command_output_dir_dict_list[i*sub_dataset_size: min((i+1)*sub_dataset_size, num_modules)]
                 
@@ -320,7 +319,9 @@ if __name__ == '__main__':
                 
                 with open(os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'datasets', opt_level, f'dataset-{i}.csv'), 'w+') as f:
                     f.write(header)
-                    for sub_dataset in list(tqdm.tqdm(pool.imap(get_training_dataset, sub_command_output_dir_dict_list), total=len(sub_command_output_dir_dict_list))):
+                    # setting partial function to specify the opt level
+                    get_training_dataset_partial = partial(get_training_dataset, dataset_opt_level=opt_level)
+                    for sub_dataset in list(tqdm.tqdm(pool.imap(get_training_dataset_partial, sub_command_output_dir_dict_list), total=len(sub_command_output_dir_dict_list))):
                         f.write(sub_dataset)
 
 
