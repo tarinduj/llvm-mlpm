@@ -91,6 +91,8 @@ def get_data_dump_commands(objs):
         cmd_list_opt_level.insert(opt_anchor, '-mllvm')
         cmd_list_opt_level.insert(opt_anchor, '-dump-mlpm-data')
         cmd_list_opt_level.insert(opt_anchor, '-mllvm')
+        cmd_list_opt_level.insert(opt_anchor, '-ml-pass-manager')
+        cmd_list_opt_level.insert(opt_anchor, '-mllvm')
         
         output_dir = output_path[:output_path.rfind(os.path.sep)]
         
