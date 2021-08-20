@@ -274,6 +274,14 @@ def get_dataset_header(command_output_dir_dict):
     return header
 
 if __name__ == '__main__': 
+    #removing previous directories
+    datasetprev = os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'datasets')
+    irprev = os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'ir')
+    cofprev = os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'code-features')
+    subprocess.run(['rm', '-r', datasetprev])
+    subprocess.run(['rm', '-r', irprev])
+    subprocess.run(['rm', '-r', cofprev])
+    
     data = []
     for opt_level in opt_levels:
         json_path = os.path.join(os.path.dirname(os.getcwd()), dataset_name, f'{opt_level}-build', 'compile_commands.json')
@@ -283,7 +291,7 @@ if __name__ == '__main__':
     data = np.array(data).T.tolist()
    
     # FIX ME: remove this later
-    # data = data[:1]
+    data = data[:1]
     # get_data_dump_commands(data[0])
 
     with multiprocessing.Pool(num_workers) as pool:
@@ -319,7 +327,7 @@ if __name__ == '__main__':
                 dataset_dir = os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'datasets', opt_level)
                 subprocess.run(['mkdir', '-p', dataset_dir], check=True)
                 
-                with open(os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'datasets', opt_level, f'dataset-{i}.csv'), 'w+') as f:
+                with open(os.path.join(os.path.dirname(os.getcwd()), dataset_name, 'datasets', opt_level, f'dataset-{i}.csv'), 'w') as f:
                     f.write(header)
                     # setting partial function to specify the opt level
                     get_training_dataset_partial = partial(get_training_dataset, dataset_opt_level=opt_level)
